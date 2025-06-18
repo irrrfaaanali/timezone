@@ -32,8 +32,16 @@ for name, offset in TEAM:
     member_cst_start = st.slider(f"{name} CST Start", 0, 23, cst_start, key=name)
     member_cst_end = member_cst_start + (cst_end - cst_start)
 
-    local_start = (datetime(2000,1,1,member_cst_start) + timedelta(hours=offset+6)).time()
-    local_end = (datetime(2000,1,1,member_cst_end) + timedelta(hours=offset+6)).time()
+    # Calculate local start time
+    local_start_dt = datetime(2000, 1, 1, member_cst_start) + timedelta(hours=offset + 6)
+    local_start = local_start_dt.time()
+
+    # Calculate local end time, wrap around 24 hours
+    end_hour = member_cst_end % 24
+    days_to_add = member_cst_end // 24
+    local_end_dt = datetime(2000, 1, 1, end_hour) + timedelta(hours=offset + 6 + 24 * days_to_add)
+    local_end = local_end_dt.time()
+
     is_night = local_start.hour < 6 or local_end.hour > 22
 
     shift_data.append({
