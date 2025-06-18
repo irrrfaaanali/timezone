@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # --- CONFIG ---
@@ -16,53 +16,51 @@ TEAM = [
     ("Roman (Ukraine)", 3),
 ]
 
-# --- UI: Select Client Time Window ---
+# --- UI ---
+st.set_page_config(layout="wide")
 st.title("Team Time Zone Shift Planner")
-st.subheader("Adjust each team member's CST shift start time")
-
-cst_start_hour = st.slider("Client Shift Start (CST)", 0, 23, 9)
-cst_end_hour = st.slider("Client Shift End (CST)", 0, 23, 17)
-
-if cst_end_hour <= cst_start_hour:
-    st.error("End time must be after start time")
+cst_start = st.slider("Client Shift Start (CST hour)", 0, 23, 9)
+cst_end = st.slider("Client Shift End (CST hour)", 0, 23, 17)
+if cst_end <= cst_start:
+    st.error("Shift end must be after start.")
     st.stop()
 
-# --- Team Schedule Sliders ---
-st.markdown("---")
-st.markdown("### Adjust Shifts (CST hours)")
+st.markdown("### Adjust Start Time for Each Team Member (in CST)")
+
 shift_data = []
 for name, offset in TEAM:
-    shift_cst = st.slider(f"{name} CST Start", 0, 23, cst_start_hour, key=name)
-    start_cst = datetime(2000, 1, 1, shift_cst)
-    end_cst = datetime(2000, 1, 1, shift_cst + (cst_end_hour - cst_start_hour))
-    start_local = start_cst + timedelta(hours=offset + 6)
-    end_local = end_cst + timedelta(hours=offset + 6)
+    member_cst_start = st.slider(f"{name} CST Start", 0, 23, cst_start, key=name)
+    member_cst_end = member_cst_start + (cst_end - cst_start)
 
-    is_night = start_local.hour < 6 or end_local.hour > 22
+    local_start = (datetime(2000,1,1,member_cst_start) + timedelta(hours=offset+6)).time()
+    local_end = (datetime(2000,1,1,member_cst_end) + timedelta(hours=offset+6)).time()
+    is_night = local_start.hour < 6 or local_end.hour > 22
+
     shift_data.append({
         "Name": name,
-        "Local Start": start_local.time(),
-        "Local End": end_local.time(),
-        "CST Start": shift_cst,
-        "CST End": shift_cst + (cst_end_hour - cst_start_hour),
-        "Night Shift": is_night
+        "CST Start": member_cst_start,
+        "CST End": member_cst_end,
+        "Local Time": f"{local_start.strftime('%I:%M %p')} – {local_end.strftime('%I:%M %p')}",
+        "Color": "#d62728" if is_night else "#1f77b4"
     })
 
-# --- Chart ---
+# --- PLOTTING ---
 df = pd.DataFrame(shift_data)
-df["Shift"] = df.apply(lambda r: f"{r['Local Start']} – {r['Local End']}", axis=1)
-fig = px.timeline(
-    df,
-    x_start="CST Start",
-    x_end="CST End",
-    y="Name",
-    color="Night Shift",
-    labels={"Night Shift": "Night Shift"},
-    title="Shift Blocks (Based on CST input, local time shown)"
-)
-fig.update_layout(xaxis_title="CST Hour", yaxis_title="Team Member", showlegend=False)
-st.plotly_chart(fig, use_container_width=True)
+fig, ax = plt.subplots(figsize=(10, 6))
 
-# --- Table ---
-st.markdown("### Shift Details")
-st.dataframe(df[["Name", "Shift"]].set_index("Name"))
+for i, row in df.iterrows():
+    ax.barh(i, row["CST End"] - row["CST Start"], left=row["CST Start"], color=row["Color"])
+    ax.text(row["CST End"] + 0.2, i, row["Local Time"], va='center', fontsize=9)
+
+ax.set_yticks(range(len(df)))
+ax.set_yticklabels(df["Name"])
+ax.set_xlabel("CST Hour")
+ax.set_title("Shift Timeline (CST) with Local Time Labels")
+ax.set_xlim(0, 24)
+ax.invert_yaxis()
+plt.grid(True, axis='x')
+st.pyplot(fig)
+
+# --- OPTIONAL TABLE ---
+st.markdown("### Shift Times in Local Time")
+st.dataframe(df[["Name", "Local Time"]].set_index("Name"))
